@@ -1,13 +1,12 @@
 const fetch = require('node-fetch');
 
-// Pexels API Key（从 GitHub Secrets 读取）
+// Pexels API Key
 const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
+// 5 个 Server 的 Webhook URLs（用逗号分隔）
+const WEBHOOK_URLS = (process.env.WEBHOOK_URLS || '').split(',').filter(url => url.trim());
 
-// Discord Webhook
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
-
-if (!WEBHOOK_URL) {
-  console.error('❌ 错误：WEBHOOK_URL 环境变量未设置');
+if (WEBHOOK_URLS.length === 0) {
+  console.error('❌ 错误：WEBHOOK_URLS 环境变量未设置（多个 URL 用逗号分隔）');
   process.exit(1);
 }
 
@@ -16,7 +15,7 @@ if (!PEXELS_API_KEY) {
   process.exit(1);
 }
 
-// 搜索关键词（anime/CS/programming 相关）
+// 搜索关键词
 const SEARCH_QUERIES = [
   'programming funny',
   'computer humor',
@@ -27,9 +26,29 @@ const SEARCH_QUERIES = [
   'anime illustration'
 ];
 
+/**
+ * 用日期生成伪随机数（确保同一天所有 server 选到相同的图片）
+ */
+function seededRandom(seed) {
+  const x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+/**
+ * 获取今天的种子（基于日期）
+ */
+function getTodaySeed() {
+  const now = new Date();
+  const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+  return parseInt(dateStr);
+}
+
 async function fetchMeme() {
-  const randomQuery = SEARCH_QUERIES[Math.floor(Math.random() * SEARCH_QUERIES.length)];
-  console.log(`📌 正在搜索 Pexels: "${randomQuery}"...`);
+  const seed = getTodaySeed();
+  const queryIndex = Math.floor(seededRandom(seed) * SEARCH_QUERIES.length);
+  const randomQuery = SEARCH_QUERIES[queryIndex];
+  
+  console.log(`📌 正在搜索 Pexels: "${randomQuery}"... (seed: ${seed})`);
   
   try {
     const res = await fetch(
@@ -51,8 +70,9 @@ async function fetchMeme() {
       throw new Error('未找到任何图片');
     }
     
-    // 随机选择一张
-    const randomPhoto = data.photos[Math.floor(Math.random() * data.photos.length)];
+    // 用种子选择图片（同一天所有 server 选到同一张）
+    const photoIndex = Math.floor(seededRandom(seed + 1) * data.photos.length);
+    const randomPhoto = data.photos[photoIndex];
     
     const meme = {
       title: `${randomQuery} - Photo by ${randomPhoto.photographer}`,
@@ -61,7 +81,7 @@ async function fetchMeme() {
       url_original: randomPhoto.url
     };
     
-    console.log(`✅ 找到图片: ${meme.title}`);
+    console.log(`✅ 找到图片: ${meme.title} (index: ${photoIndex}/${data.photos.length})`);
     return meme;
     
   } catch (error) {
@@ -79,28 +99,40 @@ async function sendToDiscord(meme) {
         text: 'View on Pexels',
         url: meme.url_original
       },
-      color: 0x05A67E // Pexels 绿色
+      color: 0x05A67E
     }]
   };
   
-  console.log('📤 正在发送到 Discord...');
+  console.log(`📤 正在发送到 ${WEBHOOK_URLS.length} 个 Discord server...`);
   
-  const res = await fetch(WEBHOOK_URL, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-    headers: { 'Content-Type': 'application/json' }
+  // 并行发送到所有 server
+  const promises = WEBHOOK_URLS.map(async (url, index) => {
+    try {
+      const res = await fetch(url.trim(), {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (res.ok) {
+        console.log(`✅ Server ${index + 1} 发送成功！`);
+      } else {
+        const errorText = await res.text();
+        console.error(`❌ Server ${index + 1} 失败：${res.status}`);
+      }
+    } catch (error) {
+      console.error(`❌ Server ${index + 1} 错误：${error.message}`);
+    }
   });
   
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`Discord Webhook 返回错误：${res.status}`);
-  }
-  
-  console.log('✅ 发送成功！');
+  await Promise.all(promises);
 }
 
 async function main() {
   console.log('🚀 开始每日 Meme 发送...');
+  console.log(`📅 今天日期种子：${getTodaySeed()}`);
+  console.log(`📋 目标 server 数量：${WEBHOOK_URLS.length}`);
+  
   try {
     const meme = await fetchMeme();
     await sendToDiscord(meme);
