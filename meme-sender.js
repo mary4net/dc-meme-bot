@@ -15,6 +15,9 @@ if (!WEBHOOK_URL) {
   process.exit(1);
 }
 
+// 更真实的 User-Agent
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 async function fetchMeme() {
   const randomSub = SUBREDDITS[Math.floor(Math.random() * SUBREDDITS.length)];
   console.log(`📌 正在从 r/${randomSub} 获取 meme...`);
@@ -22,10 +25,18 @@ async function fetchMeme() {
   try {
     const res = await fetch(
       `https://www.reddit.com/r/${randomSub}/hot.json?limit=20`,
-      { headers: { 'User-Agent': 'DiscordMemeBot/1.0' } }
+      { 
+        headers: { 
+          'User-Agent': USER_AGENT
+        } 
+      }
     );
     
-    if (!res.ok) throw new Error(`Reddit API 返回错误：${res.status}`);
+    console.log(`Reddit 响应状态：${res.status}`);
+    
+    if (!res.ok) {
+      throw new Error(`Reddit API 返回错误：${res.status}`);
+    }
     
     const data = await res.json();
     if (!data.data || !data.data.children || data.data.children.length === 0) {
