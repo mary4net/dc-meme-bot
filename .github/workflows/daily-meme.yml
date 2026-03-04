@@ -17,5 +17,5 @@ jobs:
       - name: Send Meme
         env:
           WEBHOOK_URLS: ${{ secrets.WEBHOOK_URLS }}
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          WALLHAVEN_API_KEY: ${{ secrets.WALLHAVEN_API_KEY }}
         run: node meme-sender.js
