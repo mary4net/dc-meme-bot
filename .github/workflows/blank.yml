@@ -1,0 +1,22 @@
+name: Daily Meme
+on:
+  schedule:
+    - cron: '50 7 * * *'  # 每天 7:50 UTC（比 digest 早 10 分钟）
+  workflow_dispatch:  # 允许手动触发测试
+
+jobs:
+  send-meme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies
+        run: npm install node-fetch
+      
+      - name: Send Meme
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+        run: node meme-sender.js
