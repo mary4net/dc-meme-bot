@@ -1,33 +1,33 @@
 const fetch = require('node-fetch');
 
-// Pexels API Key
-const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
-// 5 个 Server 的 Webhook URLs（用逗号分隔）
+// Wallhaven API Key
+const WALLHAVEN_API_KEY = process.env.WALLHAVEN_API_KEY;
+// Discord Webhook URLs（5 个 channel，用逗号分隔）
 const WEBHOOK_URLS = (process.env.WEBHOOK_URLS || '').split(',').filter(url => url.trim());
 
 if (WEBHOOK_URLS.length === 0) {
-  console.error('❌ 错误：WEBHOOK_URLS 环境变量未设置（多个 URL 用逗号分隔）');
+  console.error('❌ 错误：WEBHOOK_URLS 环境变量未设置');
   process.exit(1);
 }
 
-if (!PEXELS_API_KEY) {
-  console.error('❌ 错误：PEXELS_API_KEY 环境变量未设置');
+if (!WALLHAVEN_API_KEY) {
+  console.error('❌ 错误：WALLHAVEN_API_KEY 环境变量未设置');
   process.exit(1);
 }
 
-// 搜索关键词
-const SEARCH_QUERIES = [
-  'programming funny',
-  'computer humor',
-  'coding meme',
-  'developer life',
-  'software engineer',
-  'anime art',
-  'anime illustration'
+// 搜索分类（每天轮换）
+const CATEGORIES = [
+  { term: 'anime', categories: 'anime' },
+  { term: 'programming', categories: 'general' },
+  { term: 'computer', categories: 'general' },
+  { term: 'code', categories: 'general' },
+  { term: 'technology', categories: 'general' },
+  { term: 'cyberpunk', categories: 'anime' },
+  { term: 'developer', categories: 'general' }
 ];
 
 /**
- * 用日期生成伪随机数（确保同一天所有 server 选到相同的图片）
+ * 用日期生成伪随机数（确保同一天所有 channel 选到相同的图片）
  */
 function seededRandom(seed) {
   const x = Math.sin(seed) * 10000;
@@ -35,77 +35,80 @@ function seededRandom(seed) {
 }
 
 /**
- * 获取今天的种子（基于日期）
+ * 获取今天的种子
  */
 function getTodaySeed() {
   const now = new Date();
-  const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
-  return parseInt(dateStr);
+  return parseInt(now.toISOString().split('T')[0].replace(/-/g, ''));
 }
 
 async function fetchMeme() {
   const seed = getTodaySeed();
-  const queryIndex = Math.floor(seededRandom(seed) * SEARCH_QUERIES.length);
-  const randomQuery = SEARCH_QUERIES[queryIndex];
+  const catIndex = Math.floor(seededRandom(seed) * CATEGORIES.length);
+  const category = CATEGORIES[catIndex];
   
-  console.log(`📌 正在搜索 Pexels: "${randomQuery}"... (seed: ${seed})`);
+  console.log(`📌 正在搜索 Wallhaven: "${category.term}"... (seed: ${seed})`);
   
   try {
-    const res = await fetch(
-      `https://api.pexels.com/v1/search?query=${encodeURIComponent(randomQuery)}&per_page=15&orientation=any`,
-      {
-        headers: {
-          'Authorization': PEXELS_API_KEY
-        }
-      }
-    );
+    // Wallhaven API: https://wallhaven.cc/help/api
+    const params = new URLSearchParams({
+      q: category.term,
+      categories: category.categories,
+      purity: 'SFW',  // 只返回安全内容
+      sorting: 'toplist',
+      order: 'desc',
+      per_page: '20',
+      apikey: WALLHAVEN_API_KEY
+    });
+    
+    const res = await fetch(`https://wallhaven.cc/api/v1/search?${params}`);
     
     if (!res.ok) {
-      throw new Error(`Pexels API 返回错误：${res.status}`);
+      throw new Error(`Wallhaven API 返回错误：${res.status}`);
     }
     
     const data = await res.json();
     
-    if (!data.photos || data.photos.length === 0) {
+    if (!data.data || data.data.length === 0) {
       throw new Error('未找到任何图片');
     }
     
-    // 用种子选择图片（同一天所有 server 选到同一张）
-    const photoIndex = Math.floor(seededRandom(seed + 1) * data.photos.length);
-    const randomPhoto = data.photos[photoIndex];
+    // 用种子选择图片（同一天所有 channel 相同）
+    const imgIndex = Math.floor(seededRandom(seed + 1) * data.data.length);
+    const image = data.data[imgIndex];
     
     const meme = {
-      title: `${randomQuery} - Photo by ${randomPhoto.photographer}`,
-      url: randomPhoto.src.large || randomPhoto.src.original,
-      photographer: randomPhoto.photographer,
-      url_original: randomPhoto.url
+      title: `${category.term} - ${image.resolution || 'HD'}`,
+      url: image.path,  // 完整分辨率图片
+      thumb: image.thumbs.large || image.thumbs.original,
+      author: image.user ? image.user.username : 'Anonymous',
+      url_original: `https://wallhaven.cc/w/${image.id}`
     };
     
-    console.log(`✅ 找到图片: ${meme.title} (index: ${photoIndex}/${data.photos.length})`);
+    console.log(`✅ 找到图片：${meme.title} (index: ${imgIndex}/${data.data.length})`);
     return meme;
     
   } catch (error) {
-    console.error(`❌ Pexels 获取失败:`, error.message);
+    console.error(`❌ Wallhaven 获取失败:`, error.message);
     throw error;
   }
 }
 
 async function sendToDiscord(meme) {
   const payload = {
-    content: `🌅 **每日 Meme**\n\n${meme.title}\n📷 Photographer: ${meme.photographer}`,
+    content: `🌅 **每日 Meme**\n\n${meme.title}\n🎨 Author: ${meme.author}`,
     embeds: [{
-      image: { url: meme.url },
+      image: { url: meme.thumb },  // 用缩略图（加载更快）
       footer: {
-        text: 'View on Pexels',
+        text: 'View on Wallhaven',
         url: meme.url_original
       },
-      color: 0x05A67E
+      color: 0x00A8E6  // Wallhaven 蓝色
     }]
   };
   
-  console.log(`📤 正在发送到 ${WEBHOOK_URLS.length} 个 Discord server...`);
+  console.log(`📤 正在发送到 ${WEBHOOK_URLS.length} 个 Discord channel...`);
   
-  // 并行发送到所有 server
   const promises = WEBHOOK_URLS.map(async (url, index) => {
     try {
       const res = await fetch(url.trim(), {
@@ -115,13 +118,13 @@ async function sendToDiscord(meme) {
       });
       
       if (res.ok) {
-        console.log(`✅ Server ${index + 1} 发送成功！`);
+        console.log(`✅ Channel ${index + 1} 发送成功！`);
       } else {
         const errorText = await res.text();
-        console.error(`❌ Server ${index + 1} 失败：${res.status}`);
+        console.error(`❌ Channel ${index + 1} 失败：${res.status}`);
       }
     } catch (error) {
-      console.error(`❌ Server ${index + 1} 错误：${error.message}`);
+      console.error(`❌ Channel ${index + 1} 错误：${error.message}`);
     }
   });
   
@@ -131,7 +134,7 @@ async function sendToDiscord(meme) {
 async function main() {
   console.log('🚀 开始每日 Meme 发送...');
   console.log(`📅 今天日期种子：${getTodaySeed()}`);
-  console.log(`📋 目标 server 数量：${WEBHOOK_URLS.length}`);
+  console.log(`📋 目标 channel 数量：${WEBHOOK_URLS.length}`);
   
   try {
     const meme = await fetchMeme();
