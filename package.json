@@ -1,0 +1,16 @@
+{
+  "name": "dc-meme-bot",
+  "version": "1.0.0",
+  "description": "Daily anime/CS meme poster for Discord",
+  "main": "meme-sender.js",
+  "scripts": {
+    "test": "node meme-sender.js",
+    "start": "node meme-sender.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
