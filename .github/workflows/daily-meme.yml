@@ -10,12 +10,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # Persist the no-repeat history across runs
+      - name: Restore meme state cache
+        uses: actions/cache@v4
+        with:
+          path: .state
+          key: meme-state-v1
+
       - run: npm install
+
       - name: Send Meme
         env:
           WEBHOOK_URLS: ${{ secrets.WEBHOOK_URLS }}
           WALLHAVEN_API_KEY: ${{ secrets.WALLHAVEN_API_KEY }}
         run: node meme-sender.js
+
+      # Save updated state for the next day
+      - name: Save meme state cache
+        uses: actions/cache@v4
+        with:
+          path: .state
+          key: meme-state-v1
