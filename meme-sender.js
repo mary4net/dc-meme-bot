@@ -66,12 +66,24 @@ function getTodaySeed() {
   return parseInt(now.toISOString().split('T')[0].replace(/-/g, ''), 10);
 }
 
+function getTodayISO() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function isFromToday(img) {
+  const t = Number(img?.created_at);
+  if (!Number.isFinite(t) || t <= 0) return false;
+  const day = new Date(t * 1000).toISOString().split('T')[0];
+  return day === getTodayISO();
+}
+
 async function searchWallhaven({ term, categories, page }) {
   const params = new URLSearchParams({
     q: term,
     categories,
     purity: '100', // SFW
     sorting: 'toplist',
+    toplist_range: '1d', // 只看最近一天
     order: 'desc',
     per_page: '24',
     page: String(page),
@@ -104,12 +116,19 @@ async function fetchMeme() {
 
   if (all.length === 0) throw new Error('未找到任何图片');
 
+  // 只有当天确实有新内容才发
+  const todayOnly = all.filter(isFromToday);
+  if (todayOnly.length === 0) {
+    console.log('ℹ️ 今天没有符合条件的新内容（created_at 非今天 / 无结果），跳过发送。');
+    return null;
+  }
+
   // deterministic shuffle-ish start point per day
-  const start = Math.floor(seededRandom(seed + 1) * all.length);
+  const start = Math.floor(seededRandom(seed + 1) * todayOnly.length);
   let pick = null;
 
-  for (let i = 0; i < all.length; i++) {
-    const img = all[(start + i) % all.length];
+  for (let i = 0; i < todayOnly.length; i++) {
+    const img = todayOnly[(start + i) % todayOnly.length];
     if (!usedSet.has(img.id)) {
       pick = img;
       break;
@@ -121,7 +140,7 @@ async function fetchMeme() {
     console.log('⚠️ 本次候选都在最近发送过：清空去重窗口后重试。');
     state.used = [];
     saveState(state);
-    pick = all[start];
+    pick = todayOnly[start];
   }
 
   const meme = {
@@ -187,6 +206,10 @@ async function main() {
   console.log(`📋 目标 channel 数量：${WEBHOOK_URLS.length}`);
 
   const meme = await fetchMeme();
+  if (!meme) {
+    console.log('✅ 无内容可发：正常退出。');
+    return;
+  }
   await sendToDiscord(meme);
   console.log('🎉 完成！');
 }
