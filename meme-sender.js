@@ -1,3 +1,4 @@
+// ACP test: edited by codex
 const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require('path');
@@ -38,16 +39,8 @@ function saveState(state) {
   fs.writeFileSync(STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-// 搜索分类（每天轮换 + 随机）
 const CATEGORIES = [
-  { term: '+genshin +kirara', categories: 'anime' },
-  { term: '+genshin +xiao', categories: 'anime' },
-  { term: '+genshin +ganyu', categories: 'anime' },
-  { term: '+genshin +klee', categories: 'anime' },
-  { term: '+genshin +albedo', categories: 'anime' },
-  { term: '+genshin +tighnari', categories: 'anime' },
-  { term: '+genshin +columbina', categories: 'anime' },
-  { term: '+genshin +yoimiya', categories: 'anime' },
+  { categories: 'anime' }
 ];
 
 /**
